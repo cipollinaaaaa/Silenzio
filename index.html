@@ -78,7 +78,7 @@
 
   .status {
     position: fixed;
-    bottom: 30px;
+    bottom: 100px;
     left: 50%;
     transform: translateX(-50%);
     color: rgba(232, 227, 216, 0.4);
@@ -95,19 +95,40 @@
 
   .noise-level {
     position: fixed;
-    top: 30px;
-    right: 30px;
-    width: 150px;
-    height: 3px;
-    background: rgba(232, 227, 216, 0.1);
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 2px;
+    background: rgba(232, 227, 216, 0.15);
     z-index: 50;
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(232, 227, 216, 0.1);
   }
 
   .noise-level .bar {
     height: 100%;
-    background: rgba(232, 227, 216, 0.6);
+    background: linear-gradient(90deg, 
+      rgba(232, 227, 216, 0.3) 0%, 
+      rgba(232, 227, 216, 0.6) 50%,
+      rgba(232, 227, 216, 0.8) 100%);
     width: 0%;
-    transition: width 0.1s ease;
+    transition: width 0.3s ease;
+    border-radius: 2px;
+    box-shadow: 0 0 10px rgba(232, 227, 216, 0.4);
+  }
+
+  .noise-label {
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(232, 227, 216, 0.3);
+    font-size: 0.7rem;
+    letter-spacing: 0.4em;
+    z-index: 50;
+    text-transform: uppercase;
   }
 </style>
 </head>
@@ -123,6 +144,7 @@
 
 <div class="status" id="status">in ascolto...</div>
 
+<div class="noise-label">rumore</div>
 <div class="noise-level">
   <div class="bar" id="noiseBar"></div>
 </div>
