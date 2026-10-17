@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>Silenzio Reale</title>
+<title>How deep is your Silenzio?</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   
@@ -18,6 +18,7 @@
     display: block;
     width: 100%;
     height: 100%;
+    transition: transform 0.05s linear;
   }
 
   .overlay {
@@ -112,9 +113,9 @@
     background: linear-gradient(90deg, 
       rgba(232, 227, 216, 0.3) 0%, 
       rgba(232, 227, 216, 0.6) 50%,
-      rgba(232, 227, 216, 0.8) 100%);
+      rgba(255, 50, 50, 0.9) 100%);
     width: 0%;
-    transition: width 0.3s ease;
+    transition: width 0.1s ease;
     border-radius: 2px;
     box-shadow: 0 0 10px rgba(232, 227, 216, 0.4);
   }
@@ -130,11 +131,43 @@
     z-index: 50;
     text-transform: uppercase;
   }
+
+  .glitch-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8rem;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.03);
+    letter-spacing: 0.1em;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .glitch-overlay.active {
+    opacity: 1;
+    animation: glitch-anim 0.2s infinite;
+  }
+
+  @keyframes glitch-anim {
+    0% { transform: translate(-50%, -50%) skew(0deg); }
+    20% { transform: translate(-52%, -48%) skew(-2deg); }
+    40% { transform: translate(-48%, -52%) skew(2deg); }
+    60% { transform: translate(-51%, -49%) skew(-1deg); }
+    80% { transform: translate(-49%, -51%) skew(1deg); }
+    100% { transform: translate(-50%, -50%) skew(0deg); }
+  }
 </style>
 </head>
 <body>
 
 <canvas id="canvas"></canvas>
+
+<div class="glitch-overlay" id="glitchOverlay">RUMORE</div>
 
 <div class="overlay" id="overlay">
   <h1>SILENZIO</h1>
@@ -156,6 +189,7 @@ const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('startBtn');
 const status = document.getElementById('status');
 const noiseBar = document.getElementById('noiseBar');
+const glitchOverlay = document.getElementById('glitchOverlay');
 
 let W, H;
 function resize() {
@@ -165,24 +199,20 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-// Audio
 let audioContext;
 let analyser;
 let dataArray;
 let isListening = false;
 
-// Estado
 let noiseLevel = 0;
 let smoothNoise = 0;
 let particles = [];
 let revealed = false;
 
-// Configuración
-const THRESHOLD = 30; // Nivel de ruido para considerar "silencio"
-const SILENCE_TIME = 2000; // ms de silencio continuo para revelar
+const THRESHOLD = 30;
+const SILENCE_TIME = 2000;
 let silenceStartTime = null;
 
-// Partículas de caos
 class ChaosParticle {
   constructor() {
     this.reset();
@@ -191,38 +221,38 @@ class ChaosParticle {
   reset() {
     this.x = Math.random() * W;
     this.y = Math.random() * H;
-    this.vx = (Math.random() - 0.5) * 10;
-    this.vy = (Math.random() - 0.5) * 10;
-    this.size = Math.random() * 3 + 1;
+    this.vx = (Math.random() - 0.5) * 15;
+    this.vy = (Math.random() - 0.5) * 15;
+    this.size = Math.random() * 4 + 1;
     this.life = Math.random();
   }
 
   update(intensity) {
-    this.x += this.vx * intensity;
-    this.y += this.vy * intensity;
-    this.life -= 0.01 * intensity;
+    this.x += this.vx * intensity * (1 + intensity * 2);
+    this.y += this.vy * intensity * (1 + intensity * 2);
+    this.life -= 0.02 * intensity;
 
     if (this.x < 0 || this.x > W || this.y < 0 || this.y > H || this.life <= 0) {
       this.reset();
-      this.x = Math.random() * W;
-      this.y = Math.random() * H;
+      if (intensity > 0.6) {
+        this.x = W / 2 + (Math.random() - 0.5) * 100;
+        this.y = H / 2 + (Math.random() - 0.5) * 100;
+      }
       this.life = 1;
     }
   }
 
   draw(intensity) {
-    const alpha = this.life * intensity * 0.6;
-    ctx.fillStyle = `rgba(200, 200, 200, ${alpha})`;
-    ctx.fillRect(this.x, this.y, this.size, this.size);
+    const alpha = this.life * intensity * 0.8;
+    ctx.fillStyle = intensity > 0.5 ? `rgba(255, 255, 255, ${alpha})` : `rgba(200, 200, 200, ${alpha})`;
+    ctx.fillRect(this.x, this.y, this.size * intensity, this.size * intensity);
   }
 }
 
-// Crear partículas
-for (let i = 0; i < 300; i++) {
+for (let i = 0; i < 500; i++) {
   particles.push(new ChaosParticle());
 }
 
-// Iniciar audio
 startBtn.addEventListener('click', async () => {
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -251,28 +281,21 @@ function analyze() {
 
   analyser.getByteFrequencyData(dataArray);
   
-  // Calcular nivel promedio de ruido
   let sum = 0;
   for (let i = 0; i < dataArray.length; i++) {
     sum += dataArray[i];
   }
   noiseLevel = sum / dataArray.length;
   
-  // Suavizar
-  smoothNoise = smoothNoise * 0.9 + noiseLevel * 0.1;
+  smoothNoise = smoothNoise * 0.85 + noiseLevel * 0.15;
   
-  // Actualizar barra visual
   const noisePercent = Math.min((smoothNoise / 100) * 100, 100);
   noiseBar.style.width = noisePercent + '%';
   
-  // Detectar silencio
   if (smoothNoise < THRESHOLD) {
-    if (!silenceStartTime) {
-      silenceStartTime = Date.now();
-    }
+    if (!silenceStartTime) silenceStartTime = Date.now();
     
     const silenceDuration = Date.now() - silenceStartTime;
-    
     if (silenceDuration > SILENCE_TIME && !revealed) {
       revealed = true;
       revealBeauty();
@@ -288,7 +311,6 @@ function analyze() {
   requestAnimationFrame(analyze);
 }
 
-// Arte revelado (círculo perfecto minimalista)
 let revealProgress = 0;
 let circles = [];
 
@@ -322,40 +344,61 @@ function drawBeauty() {
     if (circle.radius < circle.maxRadius) {
       circle.radius += circle.speed;
     }
-    
     ctx.beginPath();
     ctx.arc(W / 2, H / 2, circle.radius, 0, Math.PI * 2);
     ctx.stroke();
   }
   
-  // Texto que aparece
+  // Aquí aparece solo la palabra Silenzio
   if (revealProgress > 0.5) {
-    ctx.fillStyle = `rgba(232, 227, 216, ${(revealProgress - 0.5) * 0.6})`;
-    ctx.font = '0.9rem Cormorant Garamond';
-    ctx.letterSpacing = '0.3em';
+    ctx.fillStyle = `rgba(232, 227, 216, ${(revealProgress - 0.5) * 0.8})`;
+    ctx.font = '300 2.5rem "Cormorant Garamond", serif';
     ctx.textAlign = 'center';
-    ctx.fillText('il silenzio rivela', W / 2, H / 2 + circles[0].radius + 40);
+    ctx.fillText('Silenzio', W / 2, H / 2 + circles[0].radius + 50);
+  }
+}
+
+function drawStatic(intensity) {
+  const numPixels = Math.floor(intensity * 1000);
+  ctx.fillStyle = `rgba(255, 255, 255, ${intensity * 0.4})`;
+  for (let i = 0; i < numPixels; i++) {
+    const x = Math.random() * W;
+    const y = Math.random() * H;
+    const w = Math.random() * 3 + 1;
+    const h = Math.random() * 3 + 1;
+    ctx.fillRect(x, y, w, h);
   }
 }
 
 function draw() {
-  // Fondo con trail
-  ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.25)';
   ctx.fillRect(0, 0, W, H);
   
-  // Intensidad del caos basada en el ruido
   const chaosIntensity = Math.min(smoothNoise / 100, 1);
   
-  // Dibujar partículas de caos
-  if (chaosIntensity > 0.1) {
+  if (chaosIntensity > 0.2) {
+    const shakeX = (Math.random() - 0.5) * chaosIntensity * 30;
+    const shakeY = (Math.random() - 0.5) * chaosIntensity * 30;
+    canvas.style.transform = `translate(${shakeX}px, ${shakeY}px)`;
+    
+    glitchOverlay.classList.add('active');
+    glitchOverlay.style.opacity = (chaosIntensity - 0.2) * 1.5;
+    
+    drawStatic(chaosIntensity);
+  } else {
+    canvas.style.transform = `translate(0, 0)`;
+    glitchOverlay.classList.remove('active');
+    glitchOverlay.style.opacity = 0;
+  }
+  
+  if (chaosIntensity > 0.05) {
     for (const p of particles) {
       p.update(chaosIntensity);
       p.draw(chaosIntensity);
     }
   }
   
-  // Dibujar belleza si hay silencio
-  if (revealed) {
+  if (revealed && chaosIntensity < 0.15) {
     drawBeauty();
   }
   
