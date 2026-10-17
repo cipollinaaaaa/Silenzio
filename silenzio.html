@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Silenzio Reale</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0A0A0A;
+    font-family: 'Cormorant Garamond', serif;
+  }
+
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 10, 0.95);
+    z-index: 100;
+    transition: opacity 2s ease;
+  }
+
+  .overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .overlay h1 {
+    color: #E8E3D8;
+    font-size: 2rem;
+    font-weight: 300;
+    letter-spacing: 0.3em;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .overlay p {
+    color: rgba(232, 227, 216, 0.6);
+    font-size: 0.9rem;
+    letter-spacing: 0.2em;
+    margin-bottom: 3rem;
+    text-align: center;
+    max-width: 400px;
+    line-height: 1.6;
+  }
+
+  button {
+    background: transparent;
+    border: 1px solid rgba(232, 227, 216, 0.4);
+    color: #E8E3D8;
+    padding: 1rem 3rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.3em;
+    cursor: pointer;
+    transition: all 1s ease;
+    font-family: inherit;
+  }
+
+  button:hover {
+    border-color: rgba(232, 227, 216, 0.8);
+    background: rgba(232, 227, 216, 0.05);
+  }
+
+  .status {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(232, 227, 216, 0.4);
+    font-size: 0.8rem;
+    letter-spacing: 0.3em;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 2s ease;
+  }
+
+  .status.visible {
+    opacity: 1;
+  }
+
+  .noise-level {
+    position: fixed;
+    top: 30px;
+    right: 30px;
+    width: 150px;
+    height: 3px;
+    background: rgba(232, 227, 216, 0.1);
+    z-index: 50;
+  }
+
+  .noise-level .bar {
+    height: 100%;
+    background: rgba(232, 227, 216, 0.6);
+    width: 0%;
+    transition: width 0.1s ease;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div class="overlay" id="overlay">
+  <h1>SILENZIO</h1>
+  <p>Questa opera richiede il tuo silenzio.<br>Il rumore distrugge la visione.<br>Il silenzio la rivela.</p>
+  <button id="startBtn">ENTRA NEL SILENZIO</button>
+</div>
+
+<div class="status" id="status">in ascolto...</div>
+
+<div class="noise-level">
+  <div class="bar" id="noiseBar"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const status = document.getElementById('status');
+const noiseBar = document.getElementById('noiseBar');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Audio
+let audioContext;
+let analyser;
+let dataArray;
+let isListening = false;
+
+// Estado
+let noiseLevel = 0;
+let smoothNoise = 0;
+let particles = [];
+let revealed = false;
+
+// Configuración
+const THRESHOLD = 30; // Nivel de ruido para considerar "silencio"
+const SILENCE_TIME = 2000; // ms de silencio continuo para revelar
+let silenceStartTime = null;
+
+// Partículas de caos
+class ChaosParticle {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 10;
+    this.vy = (Math.random() - 0.5) * 10;
+    this.size = Math.random() * 3 + 1;
+    this.life = Math.random();
+  }
+
+  update(intensity) {
+    this.x += this.vx * intensity;
+    this.y += this.vy * intensity;
+    this.life -= 0.01 * intensity;
+
+    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H || this.life <= 0) {
+      this.reset();
+      this.x = Math.random() * W;
+      this.y = Math.random() * H;
+      this.life = 1;
+    }
+  }
+
+  draw(intensity) {
+    const alpha = this.life * intensity * 0.6;
+    ctx.fillStyle = `rgba(200, 200, 200, ${alpha})`;
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+  }
+}
+
+// Crear partículas
+for (let i = 0; i < 300; i++) {
+  particles.push(new ChaosParticle());
+}
+
+// Iniciar audio
+startBtn.addEventListener('click', async () => {
+  try {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const source = audioContext.createMediaStreamSource(stream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    
+    const bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    
+    isListening = true;
+    overlay.classList.add('hidden');
+    status.classList.add('visible');
+    
+    analyze();
+  } catch (err) {
+    console.error('Error al acceder al micrófono:', err);
+    alert('Necesitamos acceso al micrófono para experimentar el silencio. Por favor, permite el acceso y recarga la página.');
+  }
+});
+
+function analyze() {
+  if (!isListening) return;
+
+  analyser.getByteFrequencyData(dataArray);
+  
+  // Calcular nivel promedio de ruido
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    sum += dataArray[i];
+  }
+  noiseLevel = sum / dataArray.length;
+  
+  // Suavizar
+  smoothNoise = smoothNoise * 0.9 + noiseLevel * 0.1;
+  
+  // Actualizar barra visual
+  const noisePercent = Math.min((smoothNoise / 100) * 100, 100);
+  noiseBar.style.width = noisePercent + '%';
+  
+  // Detectar silencio
+  if (smoothNoise < THRESHOLD) {
+    if (!silenceStartTime) {
+      silenceStartTime = Date.now();
+    }
+    
+    const silenceDuration = Date.now() - silenceStartTime;
+    
+    if (silenceDuration > SILENCE_TIME && !revealed) {
+      revealed = true;
+      revealBeauty();
+    }
+  } else {
+    silenceStartTime = null;
+    if (revealed) {
+      revealed = false;
+      hideBeauty();
+    }
+  }
+  
+  requestAnimationFrame(analyze);
+}
+
+// Arte revelado (círculo perfecto minimalista)
+let revealProgress = 0;
+let circles = [];
+
+function revealBeauty() {
+  const numCircles = 5;
+  circles = [];
+  for (let i = 0; i < numCircles; i++) {
+    circles.push({
+      radius: 0,
+      maxRadius: (W * 0.15) * (i + 1),
+      speed: 2 + Math.random()
+    });
+  }
+}
+
+function hideBeauty() {
+  circles = [];
+  revealProgress = 0;
+}
+
+function drawBeauty() {
+  if (circles.length === 0) return;
+  
+  revealProgress += 0.02;
+  if (revealProgress > 1) revealProgress = 1;
+  
+  ctx.strokeStyle = `rgba(232, 227, 216, ${0.3 * revealProgress})`;
+  ctx.lineWidth = 1;
+  
+  for (const circle of circles) {
+    if (circle.radius < circle.maxRadius) {
+      circle.radius += circle.speed;
+    }
+    
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, circle.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  // Texto que aparece
+  if (revealProgress > 0.5) {
+    ctx.fillStyle = `rgba(232, 227, 216, ${(revealProgress - 0.5) * 0.6})`;
+    ctx.font = '0.9rem Cormorant Garamond';
+    ctx.letterSpacing = '0.3em';
+    ctx.textAlign = 'center';
+    ctx.fillText('il silenzio rivela', W / 2, H / 2 + circles[0].radius + 40);
+  }
+}
+
+function draw() {
+  // Fondo con trail
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Intensidad del caos basada en el ruido
+  const chaosIntensity = Math.min(smoothNoise / 100, 1);
+  
+  // Dibujar partículas de caos
+  if (chaosIntensity > 0.1) {
+    for (const p of particles) {
+      p.update(chaosIntensity);
+      p.draw(chaosIntensity);
+    }
+  }
+  
+  // Dibujar belleza si hay silencio
+  if (revealed) {
+    drawBeauty();
+  }
+  
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
